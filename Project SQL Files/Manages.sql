@@ -1,10 +1,20 @@
 CREATE DATABASE if not exists projectdb;
 USE projectdb;
 CREATE USER IF NOT EXISTS 'project_user'@'localhost';
+DELIMITER $$
+CREATE PROCEDURE create_user_if_not_exists()
+BEGIN
+    IF NOT EXISTS(SELECT * FROM mysql.user WHERE user = 'project_user' AND host = 'localhost')
+    THEN
+        CREATE USER 'project_user'@'localhost' IDENTIFIED BY 'password';
+    END IF;
+END$$
+DELIMITER ;
 
+CALL create_user_if_not_exists();
 GRANT ALL PRIVILEGES ON projectdb.* TO 'project_user'@localhost;
 DROP TABLE IF EXISTS Manages;
-CREATE TABLE Manages (LID INT,CourseID INT,FOREIGN KEY(LID) REFERENCES Lectures(LID),FOREIGN KEY(CourseID) REFERENCES Courses(CourseID));
+CREATE TABLE Manages (LID INT,CourseID INT,FOREIGN KEY(LID) REFERENCES Lecturers(LID),FOREIGN KEY(CourseID) REFERENCES Courses(CourseID));
 INSERT INTO Manages (LID,CourseID) VALUES(620250107, 2441);
 INSERT INTO Manages (LID,CourseID) VALUES(620250107, 2892);
 INSERT INTO Manages (LID,CourseID) VALUES(620250124, 2892);
@@ -208,3 +218,7 @@ INSERT INTO Manages (LID,CourseID) VALUES(620259714, 2639);
 
 INSERT INTO Manages(LID,CourseID) VALUES (620268990, '3180');
 select * from Manages;
+
+SELECT COUNT(*) FROM Manages WHERE LID = 620250107;
+
+SELECT Courses.CourseID, Courses.Coursename FROM Courses JOIN Manages ON Manages.CourseID = Courses.CourseID WHERE Manages.LID = 620250107;

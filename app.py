@@ -21,7 +21,7 @@ def registeruser():
             lid=id
             department = content['department']
             #cursor.execute("INSERT INTO Lecturer(lid,name,password,faculty,department) VALUES(%s,%s,%s,%s,%s)",(lid,name,password,faculty,department))
-            cursor.execute(f"INSERT INTO Lectures(LID, password,name, department) VALUES({lid},'{password}','{name}','{department}');")
+            cursor.execute(f"INSERT INTO Lecturers(LID, password,name, department) VALUES({lid},'{password}','{name}','{department}');")
             #cursor.execute(f"INSERT INTO User(id, name, password) VALUES('{id}', '{name}', '{password}');")
             cnx.commit()
             cursor.close()
@@ -30,7 +30,7 @@ def registeruser():
         elif AccountType=='Student':
             sid=id
             major = content['major']
-            department= content['faculty']
+            department= content['department']
             #cursor.execute("INSERT INTO Lecturer(lid,name,password,major,faculty) VALUES(%s,%s,%s,%s,%s)",(lid,name,password,major,faculty))
             cursor.execute(f"INSERT INTO Students(SID, password, name, major, department) VALUES({sid},'{password}','{name}','{major}','{department}');")
             #cursor.execute(f"INSERT INTO User(id, name, password) VALUES('{id}', '{name}', '{password}');")
@@ -45,7 +45,7 @@ def registeruser():
             cnx.commit()
             cursor.close()
             cnx.close()
-            return make_response({'success': "Student Added"},201)
+            return make_response({'success': "Admin Added"},201)
     except Exception as e:
         print(e)
         return make_response({'error': 'An error has occurred'},400)
@@ -61,8 +61,8 @@ def login():
         content = request.json
         username = content['username']
         password = content['password']
-        cursor.execute(f"SELECT * FROM Lectures WHERE LID = {username} AND password = '{password}';")
-        lecturer = cursor.fetchone()
+        cursor.execute(f"SELECT * FROM Lecturers WHERE LID = {username} AND password = '{password}';")
+        lecturer = cursor.fetchone()[0]
         if lecturer:
             cursor.close()
             cnx.close()
@@ -72,14 +72,14 @@ def login():
             #cnx.close()
             #return make_response({"error": "Invalid username or password"},401)  
             cursor.execute(f"SELECT * FROM Students WHERE SID = {username} AND password = '{password}';")
-            student = cursor.fetchone()
+            student = cursor.fetchone()[0]
             if student:
                 cursor.close()
                 cnx.close()
                 return make_response({'success': "Login Successful"},200)
             else:
-              cursor.execute(f"SELECT * FROM Admin WHERE AID = {username} AND password = '{password}';")
-              admin = cursor.fetchone()
+              cursor.execute(f"SELECT * FROM Admins WHERE AID = {username} AND password = '{password}';")
+              admin = cursor.fetchone()[0]
               if admin:
                   cursor.close()
                   cnx.close()
@@ -102,13 +102,13 @@ def createCourse(aid):
                                 database='projectdb')
         cursor = cnx.cursor()
         cursor.execute(f"SELECT * FROM Admins WHERE AID = {aid};")
-        admin = cursor.fetchone()
+        admin = cursor.fetchone()[0]
         if admin:
             content = request.json
             CourseID = content['CourseID']
             Coursename = content['Coursename']
             Semester_Offered = content['Semester_Offered']
-            cursor.execute(f"INSERT INTO Courses(CourseID,Coursename,Semester_Offered) VALUES('{CourseID}', '{Coursename}','{Semester_Offered}');")
+            cursor.execute(f"INSERT INTO Courses(CourseID,Coursename,Semester_Offered) VALUES('{CourseID}', '{Coursename}',{Semester_Offered});")
             cnx.commit()
             cursor.close()
             cnx.close()
@@ -128,23 +128,28 @@ def assignlecturer(aid):
                                 database='projectdb')
         cursor = cnx.cursor()
         cursor.execute(f"SELECT * FROM Admins WHERE AID = {aid};")
-        admin = cursor.fetchone()
+        admin = cursor.fetchone()[0]
         if admin:
             content = request.json
             lid = content['lid']
-            cursor.execute(f"SELECT * FROM Lectures WHERE LID = {lid};")
-            lecturer = cursor.fetchone()
+            cursor.execute(f"SELECT * FROM Lecturers WHERE LID = {lid};")
+            lecturer = cursor.fetchone()[0]
             if lecturer:
                 CourseID = content["CourseID"]
                 Coursename=content["Coursename"]
                 cursor.execute(f"SELECT * FROM Courses WHERE CourseID = '{CourseID}' AND Coursename = '{Coursename}';")
-                course = cursor.fetchone()
+                course = cursor.fetchone()[0]
                 if course:
-                    cursor.execute(f"INSERT INTO Manages(LID,CourseID) VALUES ({lid}, '{CourseID}');")
-                    cnx.commit()
-                    cursor.close()
-                    cnx.close()
-                    return make_response({'success': f"Lecturer {lid} has been successfully assigned to {Coursename} {CourseID}"},201)
+                    cursor.execute(f"SELECT COUNT(*) FROM Manages WHERE LID = {lid};")
+                    num_assigned_courses = cursor.fetchone()[0]
+                    if num_assigned_courses<5:
+                        cursor.execute(f"INSERT INTO Manages(LID,CourseID) VALUES ({lid}, '{CourseID}');")
+                        cnx.commit()
+                        cursor.close()
+                        cnx.close()
+                        return make_response({'success': f"Lecturer {lid} has been successfully assigned to {Coursename} {CourseID}"},201)
+                    else:
+                        return make_response({'error': f"Lecturer {lid} cannot be assigned to more than 5 courses."})                
                 else:
                     return make_response({"error": "Course does not exist"},400)
             else:
@@ -166,14 +171,14 @@ def registerStudent():
         content = request.json
         sid = content['sid']
         cursor.execute(f"SELECT * FROM Students WHERE SID = {sid};")
-        student = cursor.fetchone()
+        student = cursor.fetchone()[0]
         if student:
               CourseID= content["CourseID"]
               cursor.execute(f"SELECT Coursename FROM Courses WHERE CourseID = '{CourseID}';")
-              CourseName = cursor.fetchone()
+              CourseName = cursor.fetchone()[0]
               if CourseName:
                  grade= content["grade"]
-                 cursor.execute(f"INSERT INTO Assigned_to(id, CourseID, grade) VALUES ({sid}, '{CourseID}',{grade});")
+                 cursor.execute(f"INSERT INTO Assigned_to(SID, CourseID, grade) VALUES ({sid}, '{CourseID}',{grade});")
                  cnx.commit()
                  cursor.close()
                  cnx.close()
@@ -196,10 +201,11 @@ def getCourses():
         cursor = cnx.cursor()
         cursor.execute("SELECT * FROM Courses;")
         course_list = []
-        for CourseID, Coursename in cursor:
+        for CourseID, Coursename, Semester_Offered in cursor:
             course = {}
             course['CourseID'] = CourseID
             course['Coursename'] = Coursename
+            course['Semester_Offered'] = Semester_Offered
             course_list.append(course)
         
         course_list.sort(key=lambda c: c['CourseID'])
@@ -217,8 +223,8 @@ def getRegisteredCourses(sid):
                                 auth_plugin='mysql_native_password',
                                 database='projectdb')
         cursor = cnx.cursor()
-        cursor.execute(f"SELECT * Students WHERE SID = {sid};")
-        student = cursor.fetchone()
+        cursor.execute(f"SELECT * FROM Students WHERE SID = {sid};")
+        student = cursor.fetchone()[0]
         if student:
           cursor.execute(f"SELECT Courses.CourseID, Courses.Coursename FROM Courses JOIN Assigned_to ON Assigned_to.CourseID = Courses.CourseID WHERE Assigned_to.SID = {sid};")
           course_list = []
@@ -240,7 +246,7 @@ def getRegisteredCourses(sid):
     except Exception as e:
         return make_response({'error': str(e)}, 400)
 
-@app.route("/getcourses/<lid>", methods = ['GET'])
+@app.route("/getAssignedCourses/<lid>", methods = ['GET'])
 def getAssignedCourses(lid):
     try:
         cnx = mysql.connector.connect(user='project_user', password='password',
@@ -248,9 +254,9 @@ def getAssignedCourses(lid):
                                 auth_plugin='mysql_native_password',
                                 database='projectdb')
         cursor = cnx.cursor()
-        cursor.execute(f"SELECT * Lectures WHERE LID={lid};")
+        cursor.execute(f"SELECT * FROM Lecturers WHERE LID={lid};")
         lecturer = cursor.fetchone()
-        if lecturer:
+        if lecturer is not None:
           cursor.execute(f"SELECT Courses.CourseID, Courses.Coursename FROM Courses JOIN Manages ON Manages.CourseID = Courses.CourseID WHERE Manages.LID = {lid};")
           course_list = []
           if cursor is not None:
@@ -279,11 +285,11 @@ def getMembers(CourseID):
                                 auth_plugin='mysql_native_password',
                                 database='projectdb')
         cursor = cnx.cursor()
-        cursor.execute(f"SELECT * Course WHERE lid={CourseID};")
-        course = cursor.fetchone()
+        cursor.execute(f"SELECT * FROM Courses WHERE CourseID={CourseID};")
+        course = cursor.fetchone()[0]
         if course:
             members_list=[]
-            cursor.execute(f"SELECT Lectures.LID AS id, Lectures.name AS name FROM Lectures JOIN Manages ON Manages.LID = Lectures.LID WHERE Manages.CourseID = {CourseID};")
+            cursor.execute(f"SELECT Lecturers.LID AS id, Lecturers.name AS name FROM Lecturers JOIN Manages ON Manages.LID = Lecturers.LID WHERE Manages.CourseID = {CourseID};")
             if cursor is not None:
               for id, name in cursor:
                   member={}
@@ -320,8 +326,8 @@ def createCalendar(lid):
                                 auth_plugin='mysql_native_password',
                                 database='projectdb')
         cursor = cnx.cursor()
-        cursor.execute(f"SELECT * FROM Lectures WHERE LID = {lid};")
-        lecturer = cursor.fetchone()
+        cursor.execute(f"SELECT * FROM Lecturers WHERE LID = {lid};")
+        lecturer = cursor.fetchone()[0]
         if lecturer:
             content = request.json
             CourseID= content['CourseID']
@@ -330,8 +336,8 @@ def createCalendar(lid):
             StartDate = content['StartDate']
             EndDate = content['EndDate']
             description = content['description']
-            cursor.execute(f"SELECT * FROM Course WHERE CourseID = '{CourseID}';")
-            course = cursor.fetchone()
+            cursor.execute(f"SELECT * FROM Courses WHERE CourseID = '{CourseID}';")
+            course = cursor.fetchone()[0]
             if course:
                 cursor.execute(f"INSERT INTO Calendar(CalID, CourseID, Event_Name, StartDate, EndDate, description) VALUES({calID},{CourseID} , '{Event_Name}', '{StartDate}', '{EndDate}', '{description}');")
                 cnx.commit()
@@ -355,7 +361,7 @@ def getEvents(CourseID):
                                 auth_plugin='mysql_native_password',
                                 database='projectdb')
         cursor = cnx.cursor()
-        cursor.execute(f"SELECT * FROM Course WHERE CourseID={CourseID};")
+        cursor.execute(f"SELECT * FROM Courses WHERE CourseID={CourseID};")
         course = cursor.fetchone()
         if course:
           cursor.execute(f"SELECT * FROM Calendar WHERE CourseID = {CourseID};")
@@ -382,7 +388,7 @@ def getEvents(CourseID):
         return make_response({'error': str(e)}, 400)
     
 
-@app.route("/getEvents/<sid>", methods=['GET'])
+@app.route("/getStudentEvents/<sid>", methods=['GET'])
 def getStudentEvents(sid):
     try:
         cnx = mysql.connector.connect(user='project_user', password='password',
